@@ -56,4 +56,12 @@ RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chmod +x /usr/local/bin/bootstrap-secrets.sh \
     && chmod +x /usr/local/bin/bootstrap-https.sh
 
+# Pre-generate a default self-signed cert so nginx can start immediately.
+# The entrypoint will regenerate if needed, but this prevents the race condition.
+RUN mkdir -p /var/www/storage/app/private/runtime/certs \
+    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+       -keyout /var/www/storage/app/private/runtime/certs/server.key \
+       -out /var/www/storage/app/private/runtime/certs/server.crt \
+       -subj "/CN=localhost/O=CampusResourcePlatform" 2>/dev/null
+
 EXPOSE 9000

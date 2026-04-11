@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Ensure .env exists (may be missing if .gitignore excluded it from COPY)
+if [ ! -f /var/www/.env ]; then
+    cp /var/www/.env.example /var/www/.env
+    echo ".env created from .env.example"
+fi
+
 echo "Waiting for MySQL..."
 while ! php -r "try { new PDO('mysql:host=mysql;port=3306;dbname=campus_platform', 'campus', 'campus_secret'); echo 'ok'; } catch(Exception \$e) { exit(1); }" 2>/dev/null; do
     sleep 1
