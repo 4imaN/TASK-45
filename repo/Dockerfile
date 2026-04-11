@@ -35,22 +35,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 WORKDIR /var/www
 
-# Copy composer files and install PHP dependencies first (layer cache)
-COPY composer.json composer.lock ./
-RUN composer install --no-scripts --no-interaction --prefer-dist
-
-# Copy package files and install Node dependencies, then build frontend
-COPY package.json package-lock.json ./
-RUN npm ci
-
 # Copy all source files
 COPY . .
 
-# Finish composer install (creates bin links + autoloader)
+# Install PHP dependencies (single pass — ensures vendor/bin/ links exist)
 RUN composer install --no-interaction --optimize-autoloader
 
-# Build frontend assets
-RUN npm run build
+# Install Node dependencies and build frontend assets
+RUN npm ci && npm run build
 
 # Set permissions on storage and bootstrap/cache
 RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache \
