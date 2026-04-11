@@ -40,14 +40,14 @@ COPY composer.json composer.lock ./
 RUN composer install --no-scripts --no-autoloader --no-interaction --prefer-dist
 
 # Copy package files and install Node dependencies, then build frontend
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # Copy all source files
 COPY . .
 
-# Finish composer autoloader
-RUN composer dump-autoload --optimize
+# Finish composer install (creates bin links + autoloader)
+RUN composer install --no-interaction --optimize-autoloader
 
 # Build frontend assets
 RUN npm run build
