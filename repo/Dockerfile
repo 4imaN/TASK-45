@@ -37,7 +37,7 @@ WORKDIR /var/www
 
 # Copy composer files and install PHP dependencies first (layer cache)
 COPY composer.json composer.lock ./
-RUN composer install --no-interaction --prefer-dist
+RUN composer install --no-scripts --no-interaction --prefer-dist
 
 # Copy package files and install Node dependencies, then build frontend
 COPY package.json package-lock.json ./
