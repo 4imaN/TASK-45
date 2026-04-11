@@ -18,7 +18,7 @@ FRONTEND_PASS=0
 
 # Backend Tests
 echo "--- Running Backend Tests ---"
-if docker compose exec -T app vendor/bin/phpunit 2>&1; then
+if docker compose exec -T app php vendor/bin/phpunit 2>&1; then
     BACKEND_PASS=1
     echo "Backend tests: PASSED"
 else
@@ -28,7 +28,7 @@ echo ""
 
 # Frontend Tests
 echo "--- Running Frontend Tests ---"
-if docker compose exec -T app npx vitest run 2>&1; then
+if docker compose exec -T app npx --no-install vitest run 2>&1; then
     FRONTEND_PASS=1
     echo "Frontend tests: PASSED"
 else
