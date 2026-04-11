@@ -23,7 +23,7 @@ The following accounts are seeded on first boot with static passwords for testin
 
 ## Architecture
 
-- **Backend**: Laravel 13 (PHP 8.3) with REST APIs
+- **Backend**: Laravel 13 (PHP 8.4) with REST APIs
 - **Frontend**: Vue 3 + Pinia + Vue Router + Tailwind CSS
 - **Database**: MySQL 8.0
 - **Queue**: Database-backed local queue with worker container
