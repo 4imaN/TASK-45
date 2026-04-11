@@ -7,6 +7,8 @@ networks:
 volumes:
   mysql_data:
   runtime_storage:
+  vendor_data:
+  node_modules_data:
 
 x-app-env: &app-env
   APP_NAME: CampusResourcePlatform
@@ -37,6 +39,8 @@ services:
       <<: *app-env
     volumes:
       - .:/var/www
+      - vendor_data:/var/www/vendor
+      - node_modules_data:/var/www/node_modules
       - runtime_storage:/var/www/storage/app/private/runtime
     networks:
       - campus_net
@@ -71,6 +75,8 @@ services:
       <<: *app-env
     volumes:
       - .:/var/www
+      - vendor_data:/var/www/vendor
+      - node_modules_data:/var/www/node_modules
       - runtime_storage:/var/www/storage/app/private/runtime
     networks:
       - campus_net
@@ -90,6 +96,8 @@ services:
       <<: *app-env
     volumes:
       - .:/var/www
+      - vendor_data:/var/www/vendor
+      - node_modules_data:/var/www/node_modules
       - runtime_storage:/var/www/storage/app/private/runtime
     networks:
       - campus_net
