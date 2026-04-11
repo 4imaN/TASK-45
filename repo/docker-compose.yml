@@ -1,0 +1,112 @@
+name: campus-platform
+
+networks:
+  campus_net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  runtime_storage:
+
+x-app-env: &app-env
+  APP_NAME: CampusResourcePlatform
+  APP_ENV: local
+  APP_DEBUG: "false"
+  APP_URL: https://localhost
+  DB_CONNECTION: mysql
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_DATABASE: campus_platform
+  DB_USERNAME: campus
+  DB_PASSWORD: campus_secret
+  QUEUE_CONNECTION: database
+  SESSION_DRIVER: database
+  CACHE_STORE: file
+  FILESYSTEM_DISK: local
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/var/www/infra/app/entrypoint.sh"]
+    working_dir: /var/www
+    depends_on:
+      - mysql
+    environment:
+      <<: *app-env
+    volumes:
+      - .:/var/www
+      - runtime_storage:/var/www/storage/app/private/runtime
+    networks:
+      - campus_net
+    restart: unless-stopped
+
+  web:
+    image: nginx:alpine
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - .:/var/www
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - runtime_storage:/var/www/storage/app/private/runtime
+    networks:
+      - campus_net
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/var/www/infra/app/entrypoint.sh"]
+    command: ["php", "artisan", "queue:work", "--tries=3"]
+    working_dir: /var/www
+    depends_on:
+      - mysql
+      - app
+    environment:
+      <<: *app-env
+    volumes:
+      - .:/var/www
+      - runtime_storage:/var/www/storage/app/private/runtime
+    networks:
+      - campus_net
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: ["/var/www/infra/app/entrypoint.sh"]
+    command: ["php", "artisan", "schedule:work"]
+    working_dir: /var/www
+    depends_on:
+      - mysql
+      - app
+    environment:
+      <<: *app-env
+    volumes:
+      - .:/var/www
+      - runtime_storage:/var/www/storage/app/private/runtime
+    networks:
+      - campus_net
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: campus_platform
+      MYSQL_USER: campus
+      MYSQL_PASSWORD: campus_secret
+      MYSQL_ROOT_PASSWORD: root_secret
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./infra/mysql/conf.d:/etc/mysql/conf.d:ro
+    networks:
+      - campus_net
+    restart: unless-stopped
