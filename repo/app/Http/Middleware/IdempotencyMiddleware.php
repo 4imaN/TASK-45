@@ -30,8 +30,8 @@ class IdempotencyMiddleware
 
         // Scope lookup by user_id + route + key
         $existing = IdempotencyKey::where('key', $key)
-            ->where('user_id', $userId)
             ->where('route', $route)
+            ->when($userId, fn($q) => $q->where('user_id', $userId), fn($q) => $q->whereNull('user_id'))
             ->first();
 
         if ($existing) {
@@ -65,7 +65,7 @@ class IdempotencyMiddleware
                 'response_body' => $responseBody,
                 'expires_at' => now()->addHours(24),
             ]);
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
             // Ignore duplicate key errors from race conditions
         }
 

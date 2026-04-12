@@ -49,6 +49,14 @@ class BootstrapAccountSeeder extends Seeder
                 ]
             );
 
+            // If user already existed but cred file was missing, reset to match
+            if (!$user->wasRecentlyCreated) {
+                $user->update([
+                    'password' => Hash::make($password),
+                    'force_password_change' => true,
+                ]);
+            }
+
             $role = Role::where('name', $account['role'])->first();
             if ($role && !$user->roles()->where('role_id', $role->id)->exists()) {
                 $user->roles()->attach($role->id);

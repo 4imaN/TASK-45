@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('idempotency_keys', function (Blueprint $table) {
             $table->id();
             $table->string('key')->unique();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('route');
             $table->string('payload_hash');
             $table->unsignedSmallInteger('response_code');

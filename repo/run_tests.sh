@@ -16,6 +16,9 @@ fi
 BACKEND_PASS=0
 FRONTEND_PASS=0
 
+# Clear config cache so phpunit.xml env vars (SQLite) take effect
+docker compose exec -T app php artisan config:clear 2>/dev/null
+
 # Backend Tests
 echo "--- Running Backend Tests ---"
 if docker compose exec -T app vendor/bin/phpunit 2>&1; then
@@ -35,6 +38,9 @@ else
     echo "Frontend tests: FAILED"
 fi
 echo ""
+
+# Restore config cache for production
+docker compose exec -T app php artisan config:cache 2>/dev/null
 
 # Summary
 echo "=== Summary ==="
