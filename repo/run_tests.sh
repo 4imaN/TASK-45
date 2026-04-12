@@ -18,10 +18,11 @@ FRONTEND_PASS=0
 
 # Clear config cache so phpunit.xml env vars (SQLite) take effect
 docker compose exec -T app php artisan config:clear 2>/dev/null
+docker compose exec -T app rm -f bootstrap/cache/config.php 2>/dev/null
 
 # Backend Tests
 echo "--- Running Backend Tests ---"
-if docker compose exec -T app vendor/bin/phpunit 2>&1; then
+if docker compose exec -T -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: -e QUEUE_CONNECTION=sync -e CACHE_STORE=array -e SESSION_DRIVER=array app vendor/bin/phpunit 2>&1; then
     BACKEND_PASS=1
     echo "Backend tests: PASSED"
 else
