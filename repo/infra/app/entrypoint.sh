@@ -20,16 +20,29 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # Bootstrap HTTPS certs
 "$SCRIPT_DIR/bootstrap-https.sh"
 
-# Run migrations
-php artisan migrate --force
+# Only the main app process runs migrations/seeding/caching.
+# Worker and scheduler skip this to avoid race conditions.
+if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
+    echo "Running migrations..."
+    php artisan migrate --force
 
-# Seed if needed
-php artisan db:seed --force
+    echo "Seeding database..."
+    php artisan db:seed --force
 
-# Cache config
-php artisan config:cache
-php artisan route:cache
-php artisan view:cache
+    echo "Caching config..."
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+
+    echo "Bootstrap complete."
+else
+    # Worker/scheduler: wait for migrations to be done (check for a key table)
+    echo "Waiting for app to finish migrations..."
+    while ! php -r "try { (new PDO('mysql:host=mysql;port=3306;dbname=campus_platform', 'campus', 'campus_secret'))->query('SELECT 1 FROM users LIMIT 1'); echo 'ok'; } catch(Exception \$e) { exit(1); }" 2>/dev/null; do
+        sleep 2
+    done
+    echo "Migrations ready."
+fi
 
 # If a command was passed (e.g. from docker-compose command:), execute it.
 # Otherwise start PHP-FPM as the default.

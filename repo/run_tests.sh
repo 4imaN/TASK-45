@@ -28,7 +28,7 @@ echo ""
 
 # Frontend Tests
 echo "--- Running Frontend Tests ---"
-if docker compose exec -T app npm test 2>&1; then
+if docker compose exec -T app npx vitest run 2>&1; then
     FRONTEND_PASS=1
     echo "Frontend tests: PASSED"
 else
