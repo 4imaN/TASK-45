@@ -11,54 +11,65 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('recommendation_batches', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
-            $table->string('context_type');
-            $table->unsignedBigInteger('context_id')->nullable();
-            $table->timestamp('generated_at')->useCurrent();
-            $table->json('parameters')->nullable();
-            $table->timestamps();
+        // MySQL auto-commits DDL, so a partially-applied migration (e.g. container
+        // killed between Schema::create calls) leaves some tables behind without
+        // recording the migration as complete. The next run then hits
+        // "table already exists". Guard each create with hasTable() so the
+        // migration is idempotent and can recover from interruption.
+        if (!Schema::hasTable('recommendation_batches')) {
+            Schema::create('recommendation_batches', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+                $table->string('context_type');
+                $table->unsignedBigInteger('context_id')->nullable();
+                $table->timestamp('generated_at')->useCurrent();
+                $table->json('parameters')->nullable();
+                $table->timestamps();
 
-            $table->index('user_id');
-            $table->index(['context_type', 'context_id']);
-            $table->index('generated_at');
-        });
+                $table->index('user_id');
+                $table->index(['context_type', 'context_id']);
+                $table->index('generated_at');
+            });
+        }
 
-        Schema::create('rule_traces', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('batch_id')->constrained('recommendation_batches')->cascadeOnDelete();
-            $table->foreignId('resource_id')->constrained('resources')->cascadeOnDelete();
-            $table->unsignedInteger('rank');
-            $table->decimal('score', 8, 4);
-            $table->json('contributing_factors');
-            $table->json('applied_filters');
-            $table->boolean('excluded')->default(false);
-            $table->string('exclusion_reason')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('rule_traces')) {
+            Schema::create('rule_traces', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('batch_id')->constrained('recommendation_batches')->cascadeOnDelete();
+                $table->foreignId('resource_id')->constrained('resources')->cascadeOnDelete();
+                $table->unsignedInteger('rank');
+                $table->decimal('score', 8, 4);
+                $table->json('contributing_factors');
+                $table->json('applied_filters');
+                $table->boolean('excluded')->default(false);
+                $table->string('exclusion_reason')->nullable();
+                $table->timestamps();
 
-            $table->index('batch_id');
-            $table->index('resource_id');
-            $table->index(['batch_id', 'rank']);
-            $table->index('excluded');
-        });
+                $table->index('batch_id');
+                $table->index('resource_id');
+                $table->index(['batch_id', 'rank']);
+                $table->index('excluded');
+            });
+        }
 
-        Schema::create('manual_overrides', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('batch_id')->nullable()->constrained('recommendation_batches')->nullOnDelete();
-            $table->foreignId('resource_id')->nullable()->constrained('resources')->nullOnDelete();
-            $table->foreignId('overridden_by')->constrained('users')->cascadeOnDelete();
-            $table->string('override_type');
-            $table->text('reason');
-            $table->json('previous_state')->nullable();
-            $table->json('new_state')->nullable();
-            $table->timestamps();
+        if (!Schema::hasTable('manual_overrides')) {
+            Schema::create('manual_overrides', function (Blueprint $table) {
+                $table->id();
+                $table->foreignId('batch_id')->nullable()->constrained('recommendation_batches')->nullOnDelete();
+                $table->foreignId('resource_id')->nullable()->constrained('resources')->nullOnDelete();
+                $table->foreignId('overridden_by')->constrained('users')->cascadeOnDelete();
+                $table->string('override_type');
+                $table->text('reason');
+                $table->json('previous_state')->nullable();
+                $table->json('new_state')->nullable();
+                $table->timestamps();
 
-            $table->index('batch_id');
-            $table->index('resource_id');
-            $table->index('overridden_by');
-            $table->index('override_type');
-        });
+                $table->index('batch_id');
+                $table->index('resource_id');
+                $table->index('overridden_by');
+                $table->index('override_type');
+            });
+        }
     }
 
     /**

@@ -13,10 +13,13 @@ if ! docker compose ps --status running app 2>/dev/null | grep -q "app"; then
     docker compose up -d --wait >/dev/null 2>&1 || docker compose up -d
 fi
 
-# Wait for the app container + MySQL to be ready (entrypoint runs migrations + seeding).
-echo "Waiting for app container to finish bootstrap..."
-for i in $(seq 1 60); do
-    if docker compose exec -T app php artisan --version >/dev/null 2>&1; then
+# Wait for the app container's entrypoint to finish its migrate/seed/cache sequence.
+# `php artisan --version` succeeds as soon as PHP is up, but we care about the
+# entrypoint printing "Bootstrap complete." — after that the config cache is
+# stable and our PHPUnit invocations won't race the entrypoint.
+echo "Waiting for app container bootstrap..."
+for i in $(seq 1 90); do
+    if docker compose logs app 2>/dev/null | grep -q "Bootstrap complete."; then
         break
     fi
     sleep 2
