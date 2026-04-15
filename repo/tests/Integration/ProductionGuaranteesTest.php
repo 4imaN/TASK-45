@@ -30,6 +30,23 @@ class ProductionGuaranteesTest extends TestCase
 {
     use RefreshDatabase, TestHelpers;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Safety rail: RefreshDatabase will wipe schema on first use. If a stale
+        // bootstrap/cache/config.php makes us point at the production DB, the suite
+        // would destroy real data. Refuse to proceed unless we're on the dedicated
+        // test database.
+        $db = config('database.connections.mysql.database');
+        if (DB::getDriverName() === 'mysql' && $db !== 'campus_platform_test') {
+            $this->fail(
+                "Refusing to run integration suite against database '{$db}'. " .
+                "Expected 'campus_platform_test'. Clear bootstrap/cache/config.php and re-run.",
+            );
+        }
+    }
+
     // =========================================================================
     // Idempotency: composite uniqueness scoped by user
     // =========================================================================
@@ -388,36 +405,37 @@ class ProductionGuaranteesTest extends TestCase
 
         [$resource, $lot] = $this->createResourceWithLot([], ['serviceable_quantity' => 1]);
 
-        // Connection 1: begin transaction and lock the lot row
-        $conn1 = DB::connection('mysql');
-        $conn1->beginTransaction();
-        $lockedLot = $conn1->table('inventory_lots')
-            ->where('id', $lot->id)
-            ->lockForUpdate()
-            ->first();
+        // To get true contention, we need two *distinct* PDO handles. Registering a second
+        // connection under a new name forces Laravel to open a fresh one instead of reusing
+        // the pooled "mysql" handle.
+        $base = config('database.connections.mysql');
+        config(['database.connections.mysql_second' => $base]);
 
+        $conn1 = DB::connection('mysql');
+        $conn2 = DB::connection('mysql_second');
+
+        // Sanity: distinct PDO objects
+        $this->assertNotSame($conn1->getPdo(), $conn2->getPdo());
+
+        $conn1->beginTransaction();
+        $lockedLot = $conn1->table('inventory_lots')->where('id', $lot->id)->lockForUpdate()->first();
         $this->assertNotNull($lockedLot);
 
-        // Connection 2: try to lock the same row with a short timeout
-        // This proves the lock is held and blocks concurrent access
-        $conn2 = DB::connection('mysql');
-        $conn2->statement('SET innodb_lock_wait_timeout = 1');
+        $conn2->statement('SET SESSION innodb_lock_wait_timeout = 1');
 
         $blocked = false;
         try {
             $conn2->beginTransaction();
-            $conn2->table('inventory_lots')
-                ->where('id', $lot->id)
-                ->lockForUpdate()
-                ->first();
+            $conn2->table('inventory_lots')->where('id', $lot->id)->lockForUpdate()->first();
             $conn2->rollBack();
         } catch (\Illuminate\Database\QueryException $e) {
-            // Expected: lock wait timeout or deadlock
+            // Expected: lock wait timeout exceeded
             $blocked = true;
             try { $conn2->rollBack(); } catch (\Throwable $ignore) {}
         }
 
         $conn1->rollBack();
+        DB::purge('mysql_second');
 
         $this->assertTrue($blocked, 'Connection 2 should have been blocked by the row lock from Connection 1.');
     }

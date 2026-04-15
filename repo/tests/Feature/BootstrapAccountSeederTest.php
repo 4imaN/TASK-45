@@ -23,6 +23,12 @@ class BootstrapAccountSeederTest extends TestCase
             mkdir($runtimeDir, 0755, true);
         }
         $this->credFile = $runtimeDir . '/bootstrap_credentials.json';
+
+        // The credential file may exist from the container's startup seeding.
+        // Remove it so each test starts from the "missing file" state it expects.
+        if (file_exists($this->credFile)) {
+            unlink($this->credFile);
+        }
     }
 
     protected function tearDown(): void

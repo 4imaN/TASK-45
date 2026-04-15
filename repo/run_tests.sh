@@ -14,43 +14,99 @@ if ! docker compose ps --status running app 2>/dev/null | grep -q "app"; then
 fi
 
 BACKEND_PASS=0
+MYSQL_PASS=0
 FRONTEND_PASS=0
+E2E_PASS=0
 
-# Clear config cache so phpunit.xml env vars (SQLite) take effect
-docker compose exec -T app php artisan config:clear 2>/dev/null
-docker compose exec -T app rm -f bootstrap/cache/config.php 2>/dev/null
+clear_config_cache() {
+    # Drop any baked config so phpunit.xml <env> values actually apply.
+    docker compose exec -T app rm -f bootstrap/cache/config.php 2>/dev/null || true
+}
 
-# Backend Tests
-echo "--- Running Backend Tests ---"
-if docker compose exec -T -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: -e QUEUE_CONNECTION=sync -e CACHE_STORE=array -e SESSION_DRIVER=array app vendor/bin/phpunit 2>&1; then
+# Backend Tests — SQLite (fast path, full feature coverage)
+# DB_* must be passed on the command line because the container's .env sets
+# DB_CONNECTION=mysql (production) and Laravel's env loader preserves that
+# unless the var is already present in the real environment.
+echo "--- Running Backend Tests (SQLite) ---"
+clear_config_cache
+if docker compose exec -T \
+    -e DB_CONNECTION=sqlite \
+    -e DB_DATABASE=:memory: \
+    -e DB_URL= \
+    -e CACHE_STORE=array \
+    -e QUEUE_CONNECTION=sync \
+    -e SESSION_DRIVER=array \
+    app vendor/bin/phpunit 2>&1; then
     BACKEND_PASS=1
-    echo "Backend tests: PASSED"
+    echo "Backend (SQLite) tests: PASSED"
 else
-    echo "Backend tests: FAILED"
+    echo "Backend (SQLite) tests: FAILED"
 fi
 echo ""
 
-# Frontend Tests
-echo "--- Running Frontend Tests ---"
+# Integration Tests — MySQL (row-locking, composite unique, datetime precision)
+echo "--- Running Integration Tests (MySQL) ---"
+# Ensure the MySQL test database exists
+docker compose exec -T mysql mysql -u root -proot_secret -e "CREATE DATABASE IF NOT EXISTS campus_platform_test; GRANT ALL ON campus_platform_test.* TO 'campus'@'%';" 2>/dev/null || true
+clear_config_cache
+if docker compose exec -T \
+    -e DB_CONNECTION=mysql \
+    -e DB_HOST=mysql \
+    -e DB_PORT=3306 \
+    -e DB_DATABASE=campus_platform_test \
+    -e DB_USERNAME=campus \
+    -e DB_PASSWORD=campus_secret \
+    -e CACHE_STORE=array \
+    -e QUEUE_CONNECTION=sync \
+    -e SESSION_DRIVER=array \
+    app vendor/bin/phpunit -c phpunit.mysql.xml 2>&1; then
+    MYSQL_PASS=1
+    echo "Integration (MySQL) tests: PASSED"
+else
+    echo "Integration (MySQL) tests: FAILED"
+fi
+echo ""
+
+# Frontend Tests (unit + view + router guards + composables)
+echo "--- Running Frontend Unit Tests ---"
 if docker compose exec -T app npx vitest run 2>&1; then
     FRONTEND_PASS=1
-    echo "Frontend tests: PASSED"
+    echo "Frontend unit tests: PASSED"
 else
-    echo "Frontend tests: FAILED"
+    echo "Frontend unit tests: FAILED"
 fi
 echo ""
 
-# Restore config cache for production
-docker compose exec -T app php artisan config:cache 2>/dev/null
+# E2E Tests — run from host against https://localhost (the running stack)
+echo "--- Running E2E Tests (Playwright) ---"
+if [ -z "${SKIP_E2E:-}" ] && command -v npx >/dev/null 2>&1; then
+    if npx playwright test 2>&1; then
+        E2E_PASS=1
+        echo "E2E tests: PASSED"
+    else
+        echo "E2E tests: FAILED (is https://localhost up? run: docker compose up)"
+    fi
+else
+    echo "E2E tests: SKIPPED (set SKIP_E2E='' and install npx to enable)"
+    E2E_PASS=1
+fi
+echo ""
+
+# Do NOT re-cache production config here: a subsequent run of this script would
+# start with that cache in place, which can leak the wrong DB into the SQLite or
+# Integration-MySQL suites before we get a chance to clear it. If the live app
+# needs the cache, it's rebuilt by the container entrypoint on restart.
 
 # Summary
 echo "=== Summary ==="
-if [ "$BACKEND_PASS" -eq 1 ] && [ "$FRONTEND_PASS" -eq 1 ]; then
+if [ "$BACKEND_PASS" -eq 1 ] && [ "$MYSQL_PASS" -eq 1 ] && [ "$FRONTEND_PASS" -eq 1 ] && [ "$E2E_PASS" -eq 1 ]; then
     echo "ALL SUITES PASSED"
     exit 0
 else
     echo "FAILURES DETECTED"
-    [ "$BACKEND_PASS" -eq 0 ] && echo "  - Backend tests failed"
-    [ "$FRONTEND_PASS" -eq 0 ] && echo "  - Frontend tests failed"
+    [ "$BACKEND_PASS" -eq 0 ] && echo "  - Backend (SQLite) tests failed"
+    [ "$MYSQL_PASS" -eq 0 ] && echo "  - Integration (MySQL) tests failed"
+    [ "$FRONTEND_PASS" -eq 0 ] && echo "  - Frontend unit tests failed"
+    [ "$E2E_PASS" -eq 0 ] && echo "  - E2E (Playwright) tests failed"
     exit 1
 fi
