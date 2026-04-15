@@ -4,13 +4,28 @@ An offline-first, full-stack Laravel + Vue.js application for managing shared eq
 
 ## Quick Start
 
+From a clean clone, bring the whole stack up with one command:
+
 ```bash
 docker compose up --build
+# or, on older Docker installs:
+docker-compose up --build
 ```
 
 The platform will be available at **https://localhost** (self-signed certificate).
 
+### Verify the install
+
+1. Open **https://localhost** in a browser.
+2. Accept the self-signed certificate warning (expected for local deployments — see [Local Network HTTPS](#local-network-https)).
+3. Log in as `student` / `Student123!` and confirm the **Resource Catalog** page loads.
+4. *(Optional)* Log in as `admin` / `Admin123!` and navigate to `/admin` to confirm the admin dashboard renders.
+
+If all four steps work, the deployment is healthy.
+
 ## Test Accounts
+
+**Authentication is required for all routes except `/api/auth/login`.** Use one of the seeded accounts below:
 
 The following accounts are seeded on first boot with static passwords for testing:
 
@@ -61,34 +76,32 @@ The following accounts are seeded on first boot with static passwords for testin
 
 ## Running Tests
 
-### Fast suite (SQLite in-memory, sync queue)
-Runs all Unit, Feature, and Integration tests against SQLite for speed:
+The gated test suite runs entirely inside the Docker stack — no host-side installs, no runtime downloads. Run everything with a single command:
 
 ```bash
-# Via Docker (recommended)
+./run_tests.sh
+```
+
+This runs **three Docker-contained suites**:
+1. **Backend (SQLite)** — PHPUnit against in-memory SQLite (`docker compose exec app vendor/bin/phpunit`)
+2. **Integration (MySQL)** — PHPUnit against a real MySQL database for row-lock / composite-unique / datetime-precision guarantees (`docker compose exec app vendor/bin/phpunit -c phpunit.mysql.xml`)
+3. **Frontend (Vitest)** — unit + view + router-guard tests (`docker compose exec app npx vitest run`)
+
+If the stack is not already running, `run_tests.sh` will `docker compose up -d` the containers automatically and wait for the app entrypoint to finish bootstrap before invoking tests. DB provisioning for the MySQL integration suite is automated — no manual `CREATE DATABASE`.
+
+### Individual suites
+
+If you want to run a single suite without `run_tests.sh`:
+
+```bash
+# Backend PHPUnit (SQLite)
 docker compose exec app vendor/bin/phpunit
 
 # Frontend
 docker compose exec app npx vitest run
-
-# Or run everything via the test script
-./run_tests.sh
 ```
 
-### MySQL integration suite (production-parity)
-Runs the Integration tests against a real MySQL instance to verify:
-- Row-level locking (SELECT ... FOR UPDATE)
-- Composite unique constraints on idempotency keys
-- DateTime column precision for due dates
-- Transaction rollback behavior
-
-```bash
-# Create the test database first
-docker compose exec mysql mysql -uroot -proot_secret -e "CREATE DATABASE IF NOT EXISTS campus_platform_test;"
-
-# Run integration tests against MySQL
-docker compose exec app vendor/bin/phpunit -c phpunit.mysql.xml
-```
+The MySQL integration suite requires a prepared test database; running it outside `run_tests.sh` is supported but the script is the canonical path because it handles DB provisioning, config-cache clearing, and env isolation for you.
 
 ### What each suite covers
 
@@ -103,6 +116,11 @@ docker compose exec app vendor/bin/phpunit -c phpunit.mysql.xml
 | Row-level locking (FOR UPDATE) | logic only | **lock contention proven via two-connection test** |
 | Composite unique constraints | N/A (SQLite skip) | **enforced** |
 | DateTime precision | cast-level | **column-level** |
+
+### Notes on test fidelity
+- `POST /api/files/upload` and `GET /api/files/{file}/download` have **both** fast-path and real-disk coverage:
+  - `tests/Feature/Api/FileApiTest.php` runs against `Storage::fake('local')` for quick authorization, validation, and response-shape checks.
+  - `tests/Feature/Api/FileApiRealDiskTest.php` runs against the real `local` disk (no fake) — writes real bytes, reads them back via `Storage::disk('local')`, verifies the recorded SHA-256 checksum against `hash_file('sha256', ...)`, and proves the integrity check rejects tampered files. Both suites run under `./run_tests.sh`.
 
 ### Manual verification required
 - Sustained concurrent load testing (the two-connection lock test proves the mechanism; load-scale contention requires a dedicated harness)

@@ -94,13 +94,40 @@ class IdempotencyTest extends TestCase
         $this->assertDatabaseCount('loan_requests', 2);
     }
 
-    public function test_auth_endpoints_exempt_from_idempotency(): void
+    public function test_auth_login_requires_idempotency_key(): void
     {
+        // The middleware historically exempted /api/auth/login. As of the prompt
+        // compliance pass, ALL state-changing endpoints (including auth) must
+        // present an X-Idempotency-Key. This test guards that rule.
         $user = $this->createStudent(['password' => bcrypt('TestPass1!')]);
 
-        // Login should work without idempotency key
+        // Missing header → 422 (IdempotencyMiddleware rejects).
+        $this->postJson('/api/auth/login', [
+            'username' => $user->username, 'password' => 'TestPass1!',
+        ])->assertUnprocessable();
+
+        // Same request with a header → 200.
         $this->postJson('/api/auth/login', [
             'username' => $user->username, 'password' => 'TestPass1!',
         ], ['X-Idempotency-Key' => 'login-' . uniqid()])->assertOk();
+    }
+
+    public function test_auth_response_body_is_not_persisted_in_idempotency_store(): void
+    {
+        // Auth response bodies contain bearer tokens. The middleware must store a
+        // replay marker instead of the raw token so the idempotency table never
+        // persists credentials.
+        $user = $this->createStudent(['password' => bcrypt('TestPass1!')]);
+        $key = 'login-notoken-' . uniqid();
+
+        $first = $this->postJson('/api/auth/login', [
+            'username' => $user->username, 'password' => 'TestPass1!',
+        ], ['X-Idempotency-Key' => $key])->assertOk();
+
+        $row = \App\Models\IdempotencyKey::where('key', $key)->first();
+        $this->assertNotNull($row);
+        $body = is_string($row->response_body) ? json_decode($row->response_body, true) : $row->response_body;
+        $this->assertArrayHasKey('_replayed', $body, 'Auth route stored raw response instead of replay marker');
+        $this->assertArrayNotHasKey('token', $body, 'Bearer token leaked into idempotency_keys.response_body');
     }
 }

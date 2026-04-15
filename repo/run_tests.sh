@@ -30,7 +30,6 @@ echo ""
 BACKEND_PASS=0
 MYSQL_PASS=0
 FRONTEND_PASS=0
-E2E_PASS=0
 
 clear_config_cache() {
     # Drop any baked config so phpunit.xml <env> values actually apply.
@@ -91,23 +90,6 @@ else
 fi
 echo ""
 
-# E2E Tests — Playwright runs from the HOST against the live stack.
-# Default: SKIPPED in CI because Playwright browsers aren't installed in the
-# harness container. Opt in locally with RUN_E2E=1 after `npx playwright install`.
-echo "--- Running E2E Tests (Playwright) ---"
-if [ "${RUN_E2E:-0}" = "1" ] && command -v npx >/dev/null 2>&1; then
-    if npx playwright test 2>&1; then
-        E2E_PASS=1
-        echo "E2E tests: PASSED"
-    else
-        echo "E2E tests: FAILED (is https://localhost up? run: docker compose up)"
-    fi
-else
-    echo "E2E tests: SKIPPED (set RUN_E2E=1 locally after 'npx playwright install')"
-    E2E_PASS=1
-fi
-echo ""
-
 # Do NOT re-cache production config here: a subsequent run of this script would
 # start with that cache in place, which can leak the wrong DB into the SQLite or
 # Integration-MySQL suites before we get a chance to clear it. If the live app
@@ -115,7 +97,7 @@ echo ""
 
 # Summary
 echo "=== Summary ==="
-if [ "$BACKEND_PASS" -eq 1 ] && [ "$MYSQL_PASS" -eq 1 ] && [ "$FRONTEND_PASS" -eq 1 ] && [ "$E2E_PASS" -eq 1 ]; then
+if [ "$BACKEND_PASS" -eq 1 ] && [ "$MYSQL_PASS" -eq 1 ] && [ "$FRONTEND_PASS" -eq 1 ]; then
     echo "ALL SUITES PASSED"
     exit 0
 else
@@ -123,6 +105,5 @@ else
     [ "$BACKEND_PASS" -eq 0 ] && echo "  - Backend (SQLite) tests failed"
     [ "$MYSQL_PASS" -eq 0 ] && echo "  - Integration (MySQL) tests failed"
     [ "$FRONTEND_PASS" -eq 0 ] && echo "  - Frontend unit tests failed"
-    [ "$E2E_PASS" -eq 0 ] && echo "  - E2E (Playwright) tests failed"
     exit 1
 fi
