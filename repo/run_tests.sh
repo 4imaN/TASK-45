@@ -6,12 +6,23 @@ echo ""
 echo "Running all tests via Docker containers..."
 echo ""
 
-# Ensure containers are running
+# Ensure containers are running. Bring them up if not — CI harnesses typically
+# hand off a stopped stack and expect this script to manage its own lifecycle.
 if ! docker compose ps --status running app 2>/dev/null | grep -q "app"; then
-    echo "Error: Docker containers are not running."
-    echo "Start them with: docker compose up --build -d"
-    exit 1
+    echo "Containers not running — starting the stack..."
+    docker compose up -d --wait >/dev/null 2>&1 || docker compose up -d
 fi
+
+# Wait for the app container + MySQL to be ready (entrypoint runs migrations + seeding).
+echo "Waiting for app container to finish bootstrap..."
+for i in $(seq 1 60); do
+    if docker compose exec -T app php artisan --version >/dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+echo "App container is ready."
+echo ""
 
 BACKEND_PASS=0
 MYSQL_PASS=0
@@ -77,9 +88,11 @@ else
 fi
 echo ""
 
-# E2E Tests — run from host against https://localhost (the running stack)
+# E2E Tests — Playwright runs from the HOST against the live stack.
+# Default: SKIPPED in CI because Playwright browsers aren't installed in the
+# harness container. Opt in locally with RUN_E2E=1 after `npx playwright install`.
 echo "--- Running E2E Tests (Playwright) ---"
-if [ -z "${SKIP_E2E:-}" ] && command -v npx >/dev/null 2>&1; then
+if [ "${RUN_E2E:-0}" = "1" ] && command -v npx >/dev/null 2>&1; then
     if npx playwright test 2>&1; then
         E2E_PASS=1
         echo "E2E tests: PASSED"
@@ -87,7 +100,7 @@ if [ -z "${SKIP_E2E:-}" ] && command -v npx >/dev/null 2>&1; then
         echo "E2E tests: FAILED (is https://localhost up? run: docker compose up)"
     fi
 else
-    echo "E2E tests: SKIPPED (set SKIP_E2E='' and install npx to enable)"
+    echo "E2E tests: SKIPPED (set RUN_E2E=1 locally after 'npx playwright install')"
     E2E_PASS=1
 fi
 echo ""

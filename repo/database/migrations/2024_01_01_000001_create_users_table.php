@@ -14,10 +14,15 @@ return new class extends Migration
         Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('username')->unique();
-            $table->string('email')->unique()->nullable();
+            // email is encrypted at the application layer — ciphertext can
+            // exceed 255 chars, and since each encrypt uses a fresh IV the
+            // ciphertext is non-deterministic, so a DB-level UNIQUE index
+            // on it would be meaningless. Store as TEXT and enforce
+            // uniqueness elsewhere if ever needed.
+            $table->text('email')->nullable();
             $table->string('password');
             $table->string('display_name')->nullable();
-            $table->string('phone')->nullable();
+            $table->text('phone')->nullable();
             $table->boolean('force_password_change')->default(true);
             $table->enum('account_status', ['active', 'suspended', 'held'])->default('active');
             $table->timestamp('last_login_at')->nullable();
